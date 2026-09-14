@@ -9,6 +9,7 @@
     <PackageProjectUrl>https://github.com/cyber-asma/DbWatch</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
@@ -25,6 +26,7 @@
   <ItemGroup>
     <EmbeddedResource Include="DbWatch.html" LogicalName="DbWatch.DbWatch.html" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\assets\icon.png" Pack="true" PackagePath="\" />
     <InternalsVisibleTo Include="DbWatch.Tests" />
   </ItemGroup>
 
