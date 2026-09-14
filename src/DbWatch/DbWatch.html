@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>DB Watch</title>
+<style>
+  :root {
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --panel-2: #fafbfc;
+    --panel-3: #f0f3f7;
+    --border: #d0d7e2;
+    --border-soft: #e4e9f0;
+    --text: #2c3540;
+    --text-soft: #4a5562;
+    --muted: #8a96a6;
+    --accent: #5b8fc4;
+    --accent-bg: #eaf2fa;
+    --warn: #cc9933;
+    --warn-bg: #fbf0d6;
+    --danger: #c47b7b;
+    --danger-bg: #f7e2e2;
+    --good: #7a9c4c;
+    --good-bg: #e8f0d8;
+    --purple: #7558a0;
+    --purple-bg: #ece4f5;
+    --new-glow: rgba(91, 143, 196, 0.35);
+    --mono: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 13px; }
+
+  header.appbar {
+    position: sticky; top: 0; z-index: 5;
+    background: linear-gradient(180deg, #5b8fc4, #4d7eb2);
+    color: white;
+    padding: 0 16px; height: 48px;
+    display: flex; align-items: center; gap: 14px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+  }
+  header.appbar h1 { margin: 0; font-size: 15px; font-weight: 500; }
+  header.appbar .sep { width: 1px; height: 18px; background: rgba(255,255,255,0.3); }
+  header.appbar .count { font-size: 12px; opacity: 0.88; }
+  header.appbar .controls { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  header.appbar input[type="text"] {
+    background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 3px; padding: 4px 10px; font-size: 12px; width: 180px; outline: none;
+  }
+  header.appbar input[type="text"]::placeholder { color: rgba(255,255,255,0.7); }
+  header.appbar input[type="text"]:focus { background: rgba(255,255,255,0.22); border-color: rgba(255,255,255,0.6); }
+  header.appbar button {
+    background: rgba(255,255,255,0.12); color: white; border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 3px; padding: 4px 12px; font-size: 12px; cursor: pointer;
+  }
+  header.appbar button:hover { background: rgba(255,255,255,0.22); }
+  header.appbar button.toggled { background: rgba(255,255,255,0.32); border-color: rgba(255,255,255,0.6); }
+  header.appbar .status { font-size: 11px; opacity: 0.85; }
+  header.appbar .status.live::before { content: '● '; color: #aed581; }
+  header.appbar .status.dead::before { content: '● '; color: #ef9a9a; }
+
+  main { padding: 12px 16px 80px; max-width: 1400px; margin: 0 auto; }
+
+  .req {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    transition: box-shadow 0.2s, border-color 0.2s;
+  }
+  .req.latest {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--new-glow);
+  }
+  .req.has-dups { border-color: var(--warn); }
+  .req.has-dups.latest {
+    box-shadow: 0 0 0 3px rgba(204, 153, 51, 0.3);
+  }
+
+  .req > summary {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--border-soft);
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    flex-wrap: wrap;
+  }
+  .req > summary::-webkit-details-marker { display: none; }
+  .req > summary::before {
+    content: '▾';
+    color: var(--muted); font-size: 10px; width: 12px;
+    transition: transform 0.1s;
+  }
+  .req:not([open]) > summary::before { transform: rotate(-90deg); }
+  .req-method {
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 3px;
+    background: var(--accent-bg); color: var(--accent);
+    min-width: 50px; text-align: center;
+  }
+  .req-method.POST { background: var(--warn-bg); color: var(--warn); }
+  .req-method.PUT  { background: var(--purple-bg); color: var(--purple); }
+  .req-method.DELETE { background: var(--danger-bg); color: var(--danger); }
+  .req-method.BG { background: var(--panel-3); color: var(--muted); }
+  .req-path { font-family: var(--mono); font-size: 12px; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 200px; }
+  .req-stat {
+    font-size: 11px; color: var(--text-soft);
+    padding: 2px 8px; border-radius: 3px; background: var(--panel-3);
+    white-space: nowrap;
+  }
+  .req-stat b { color: var(--text); font-weight: 600; }
+  .req-stat.dup-stat { background: var(--warn-bg); color: var(--warn); }
+  .req-stat.dup-stat b { color: var(--warn); }
+  .req-stat.timestamp { background: transparent; color: var(--muted); }
+
+  .queries { padding: 4px 0; }
+  .q {
+    border: none;
+    border-top: 1px solid var(--border-soft);
+    margin: 0;
+  }
+  .q:first-child { border-top: none; }
+  .q.is-dup > summary { background: linear-gradient(90deg, var(--warn-bg) 0px, var(--warn-bg) 3px, var(--panel) 3px); }
+  .q.is-dup > summary:hover { background: linear-gradient(90deg, var(--warn-bg) 0px, var(--warn-bg) 3px, var(--panel-3) 3px); }
+  .q > summary {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px 6px 30px;
+    cursor: pointer; list-style: none; user-select: none;
+    background: var(--panel);
+    transition: background 0.1s;
+  }
+  .q > summary:hover { background: var(--panel-3); }
+  .q > summary::-webkit-details-marker { display: none; }
+  .q > summary::before {
+    content: '▸';
+    color: var(--muted); font-size: 9px;
+    transition: transform 0.1s; width: 10px;
+  }
+  .q[open] > summary::before { transform: rotate(90deg); }
+  .q-time { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 92px; }
+  .q-duration { font-family: var(--mono); font-size: 11px; font-weight: 600; width: 56px; text-align: right; }
+  .q-duration.fast { color: var(--good); }
+  .q-duration.med { color: var(--warn); }
+  .q-duration.slow { color: var(--danger); }
+  .q-op {
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    padding: 1px 6px; border-radius: 3px; min-width: 38px; text-align: center;
+  }
+  .q-op.SELECT { background: var(--accent-bg); color: var(--accent); }
+  .q-op.INSERT { background: var(--good-bg); color: var(--good); }
+  .q-op.UPDATE { background: var(--purple-bg); color: var(--purple); }
+  .q-op.DELETE { background: var(--danger-bg); color: var(--danger); }
+  .q-op.OTHER  { background: var(--panel-3); color: var(--muted); }
+  .q-table {
+    font-family: var(--mono); font-size: 11px;
+    padding: 1px 6px; border-radius: 3px;
+    background: var(--panel-3); color: var(--text-soft);
+    max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .q-dup-badge {
+    font-size: 10px; font-weight: 700;
+    padding: 1px 6px; border-radius: 8px;
+    background: var(--warn); color: white;
+    font-family: var(--mono);
+  }
+  .q-preview {
+    flex: 1; font-family: var(--mono); font-size: 12px;
+    color: var(--text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .q-body { background: var(--panel-3); border-top: 1px solid var(--border-soft); padding: 12px 14px 14px 30px; }
+  pre.sql {
+    margin: 0; padding: 12px; background: var(--panel);
+    border: 1px solid var(--border-soft); border-radius: 3px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.55;
+    overflow-x: auto; color: var(--text); white-space: pre;
+  }
+  .sql .kw    { color: var(--accent); font-weight: 600; }
+  .sql .str   { color: var(--good); }
+  .sql .num   { color: var(--warn); }
+  .params { margin-top: 10px; }
+  .params h3 {
+    margin: 0 0 4px; font-size: 10px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
+  }
+  .params table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; background: var(--panel); border: 1px solid var(--border-soft); border-radius: 3px; }
+  .params td { padding: 4px 10px; border-top: 1px solid var(--border-soft); vertical-align: top; }
+  .params tr:first-child td { border-top: none; }
+  .params td:first-child { color: var(--accent); width: 220px; font-weight: 500; }
+
+  .empty { color: var(--muted); padding: 60px 20px; text-align: center; font-style: italic; }
+
+  .req-stat.cov-missing { background: var(--danger-bg); color: var(--danger); }
+  .req-stat.cov-missing b { color: var(--danger); }
+
+  .coverage {
+    border-top: 1px solid var(--border-soft);
+    background: var(--panel-2);
+    padding: 10px 14px 12px 30px;
+  }
+  .coverage h3 {
+    margin: 0 0 8px; font-size: 10px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
+  }
+  .coverage h3 .dto { color: var(--accent); font-family: var(--mono); text-transform: none; letter-spacing: 0; }
+  .coverage h3 .rows { color: var(--muted); font-weight: 400; }
+  .cov-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+  .cov-field {
+    font-family: var(--mono); font-size: 11px;
+    padding: 2px 8px; border-radius: 3px;
+    background: var(--panel-3); color: var(--text-soft);
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+  .cov-field .cov-type { color: var(--muted); font-size: 10px; }
+  .cov-field.filled  { background: var(--good-bg); color: var(--good); }
+  .cov-field.partial { background: var(--warn-bg); color: var(--warn); }
+  .cov-field.missing { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); font-weight: 600; }
+  .cov-field.cov-hidden { display: none; }
+  .cov-legend { margin-top: 8px; font-size: 10px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+  .cov-legend span { cursor: pointer; padding: 1px 4px; border-radius: 3px; user-select: none; }
+  .cov-legend span:hover { background: var(--panel-3); }
+  .cov-legend span.hiding { text-decoration: line-through; opacity: 0.5; }
+  .cov-legend span::before { content: '■ '; }
+  .cov-legend .l-missing::before { color: var(--danger); }
+  .cov-legend .l-partial::before { color: var(--warn); }
+  .cov-legend .l-filled::before  { color: var(--good); }
+  .cov-toggle {
+    font-size: 10px; color: var(--accent); cursor: pointer; user-select: none;
+    margin-left: 8px; font-weight: 400; text-transform: none; letter-spacing: 0;
+  }
+  .coverage.lean .cov-field.filled { display: none; }
+</style>
+</head>
+<body>
+<header class="appbar">
+  <h1>DB Watch</h1>
+  <span class="sep"></span>
+  <span class="count" id="count">0 requests · 0 queries</span>
+  <span class="status live" id="status">connected</span>
+  <div class="controls">
+    <input type="text" id="filter" placeholder="filter SQL / path / table…" />
+    <button id="dupOnly" title="show only requests with duplicates">duplicates only</button>
+    <button id="pause">pause</button>
+    <button id="clear">clear</button>
+  </div>
+</header>
+
+<main id="list">
+  <div class="empty" id="empty">Waiting for queries… trigger an action in the app.</div>
+</main>
+
+<script>
+const base = location.pathname.replace(/\/+$/, '');
+const list = document.getElementById('list');
+const empty = document.getElementById('empty');
+const countEl = document.getElementById('count');
+const statusEl = document.getElementById('status');
+const filterEl = document.getElementById('filter');
+const clearBtn = document.getElementById('clear');
+const pauseBtn = document.getElementById('pause');
+const dupOnlyBtn = document.getElementById('dupOnly');
+
+let totalQueries = 0;
+let paused = false;
+let filter = '';
+let dupOnly = false;
+let currentLatest = null;
+let background = null;
+const MAX_REQUESTS = 200;
+const BACKGROUND_GAP_MS = 1000;
+const groups = new Map();
+
+const KW = ['SELECT','FROM','WHERE','INNER JOIN','LEFT JOIN','RIGHT JOIN','OUTER JOIN','CROSS JOIN','JOIN','ON','AND','OR','GROUP BY','ORDER BY','HAVING','LIMIT','OFFSET','UNION ALL','UNION','INSERT INTO','VALUES','UPDATE','SET','DELETE FROM','DELETE','AS','IS NULL','IS NOT NULL','NOT NULL','NULL','CASE','WHEN','THEN','ELSE','END','DISTINCT','EXISTS','IN','BETWEEN','LIKE','TOP','WITH','DECLARE','EXEC'];
+
+function fmtTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString('en-GB') + '.' + String(d.getMilliseconds()).padStart(3, '0');
+}
+function durationClass(ms) {
+  if (ms < 50) return 'fast';
+  if (ms < 200) return 'med';
+  return 'slow';
+}
+function prettyPrint(sql) {
+  let out = sql.replace(/\r/g, '');
+  out = out.replace(/\s+(FROM|WHERE|INNER JOIN|LEFT JOIN|RIGHT JOIN|OUTER JOIN|CROSS JOIN|JOIN|ON|AND|OR|GROUP BY|ORDER BY|HAVING|UNION ALL|UNION|VALUES|SET)\b/gi, '\n  $1');
+  out = out.replace(/\s+(SELECT|INSERT INTO|UPDATE|DELETE FROM|DELETE)\b/gi, '\n$1');
+  return out.trim();
+}
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function highlight(text) {
+  text = escapeHtml(text);
+  const sorted = KW.slice().sort((a, b) => b.length - a.length);
+  for (const kw of sorted) {
+    const re = new RegExp('\\b(' + kw.replace(/\s+/g, '\\s+') + ')\\b', 'gi');
+    text = text.replace(re, '<span class="kw">$1</span>');
+  }
+  text = text.replace(/'([^']*)'/g, '<span class="str">\'$1\'</span>');
+  text = text.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="num">$1</span>');
+  return text;
+}
+function paramsTable(params) {
+  const entries = Object.entries(params || {});
+  if (!entries.length) return '';
+  let html = '<div class="params"><h3>parameters</h3><table>';
+  for (const [k, v] of entries) {
+    html += `<tr><td>${escapeHtml(k)}</td><td>${v == null ? '<em style="color:var(--muted)">null</em>' : escapeHtml(String(v))}</td></tr>`;
+  }
+  html += '</table></div>';
+  return html;
+}
+
+function parseSql(sql) {
+  const m = /^\s*(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|DELETE|MERGE|EXEC)\b/i.exec(sql);
+  let op = m ? m[1].toUpperCase().split(/\s+/)[0] : 'OTHER';
+  if (op === 'EXEC') op = 'OTHER';
+  let table = '';
+  const ft = /\bFROM\s+\[(?:[^\]]+\]\.\[)?([^\]]+)\]/i.exec(sql);
+  const it = /\bINSERT\s+INTO\s+\[(?:[^\]]+\]\.\[)?([^\]]+)\]/i.exec(sql);
+  const ut = /\bUPDATE\s+\[(?:[^\]]+\]\.\[)?([^\]]+)\]/i.exec(sql);
+  if (op === 'INSERT' && it) table = it[1];
+  else if (op === 'UPDATE' && ut) table = ut[1];
+  else if (ft) table = ft[1];
+  return { op, table };
+}
+
+function normalize(sql) {
+  return sql
+    .replace(/@__\w+/g, '?')
+    .replace(/@\w+/g, '?')
+    .replace(/N?'([^']*)'/g, '?')
+    .replace(/\b\d+(?:\.\d+)?\b/g, '?')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function hash(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return h.toString(36);
+}
+
+function groupKey(entry) {
+  if (entry.requestId) return entry.requestId;
+  const at = Date.parse(entry.timestampUtc);
+  if (!background || at - background.at > BACKGROUND_GAP_MS || !groups.has(background.key)) {
+    background = { key: 'background-' + entry.id, at };
+  }
+  background.at = at;
+  return background.key;
+}
+
+function ensureGroup(entry) {
+  const reqId = groupKey(entry);
+  let g = groups.get(reqId);
+  if (g) return g;
+
+  if (empty.parentNode) empty.remove();
+
+  const el = document.createElement('details');
+  el.className = 'req';
+  el.open = true;
+  const method = (entry.method || 'BG').toUpperCase();
+  const path = entry.path || '(background)';
+  el.innerHTML = `
+    <summary>
+      <span class="req-method ${method}">${method}</span>
+      <span class="req-path">${escapeHtml(path)}</span>
+      <span class="req-stat"><b class="q-count">0</b> queries</span>
+      <span class="req-stat"><b class="t-ms">0.0</b> ms total</span>
+      <span class="req-stat"><b class="tables-count">0</b> tables</span>
+      <span class="req-stat slowest-stat" style="display:none">slowest <b class="slowest-ms">0</b> ms</span>
+      <span class="req-stat dup-stat" style="display:none"><b class="dup-count">0</b> duplicates</span>
+      <span class="req-stat cov-missing cov-missing-stat" style="display:none"><b class="cov-missing-count">0</b> missing</span>
+      <span class="req-stat timestamp">${fmtTime(entry.timestampUtc)}</span>
+    </summary>
+    <div class="queries"></div>`;
+  el.dataset.reqId = reqId;
+  list.prepend(el);
+
+  g = {
+    el,
+    normalized: new Map(),
+    tables: new Set(),
+    slowest: 0,
+    totalMs: 0,
+    count: 0,
+  };
+  groups.set(reqId, g);
+
+  if (currentLatest && currentLatest !== g.el) currentLatest.classList.remove('latest');
+  g.el.classList.add('latest');
+  currentLatest = g.el;
+
+  while (list.children.length > MAX_REQUESTS) {
+    const oldEl = list.lastElementChild;
+    if (!oldEl || !oldEl.dataset.reqId) break;
+    groups.delete(oldEl.dataset.reqId);
+    oldEl.remove();
+  }
+  return g;
+}
+
+function addQuery(entry) {
+  const g = ensureGroup(entry);
+  const queriesEl = g.el.querySelector('.queries');
+
+  const { op, table } = parseSql(entry.sql);
+  const sig = hash(normalize(entry.sql));
+
+  let dupInfo = g.normalized.get(sig);
+  const isDup = !!dupInfo;
+  if (!dupInfo) {
+    dupInfo = { count: 0, firstEl: null, sig };
+    g.normalized.set(sig, dupInfo);
+  }
+  dupInfo.count++;
+
+  const preview = entry.sql.replace(/\s+/g, ' ').slice(0, 220);
+  const det = document.createElement('details');
+  det.className = 'q' + (isDup ? ' is-dup' : '');
+  det.dataset.sig = sig;
+  det.innerHTML = `
+    <summary>
+      <span class="q-time">${fmtTime(entry.timestampUtc)}</span>
+      <span class="q-duration ${durationClass(entry.durationMs)}">${entry.durationMs.toFixed(1)} ms</span>
+      <span class="q-op ${op}">${op === 'OTHER' ? '???' : op.slice(0, 6)}</span>
+      <span class="q-table" title="${escapeHtml(table)}">${escapeHtml(table || '-')}</span>
+      <span class="q-dup-badge" style="${dupInfo.count > 1 ? '' : 'display:none'}">×${dupInfo.count}</span>
+      <span class="q-preview">${escapeHtml(preview)}</span>
+    </summary>
+    <div class="q-body">
+      <pre class="sql">${highlight(prettyPrint(entry.sql))}</pre>
+      ${paramsTable(entry.parameters)}
+    </div>`;
+  queriesEl.appendChild(det);
+
+  if (dupInfo.firstEl === null) {
+    dupInfo.firstEl = det;
+  } else {
+    const firstBadge = dupInfo.firstEl.querySelector('.q-dup-badge');
+    firstBadge.style.display = '';
+    firstBadge.textContent = '×' + dupInfo.count;
+    dupInfo.firstEl.classList.add('is-dup');
+  }
+
+  g.count++;
+  g.totalMs += entry.durationMs;
+  if (entry.durationMs > g.slowest) g.slowest = entry.durationMs;
+  if (table) g.tables.add(table);
+  const dupSets = Array.from(g.normalized.values()).filter(d => d.count > 1).length;
+
+  const sum = g.el.querySelector('summary');
+  sum.querySelector('.q-count').textContent = g.count;
+  sum.querySelector('.t-ms').textContent = g.totalMs.toFixed(1);
+  sum.querySelector('.tables-count').textContent = g.tables.size;
+  const slowestStat = sum.querySelector('.slowest-stat');
+  slowestStat.style.display = g.slowest >= 50 ? '' : 'none';
+  slowestStat.querySelector('.slowest-ms').textContent = g.slowest.toFixed(0);
+  const dupStat = sum.querySelector('.dup-stat');
+  if (dupSets > 0) {
+    dupStat.style.display = '';
+    dupStat.querySelector('.dup-count').textContent = dupSets;
+    g.el.classList.add('has-dups');
+  }
+
+  totalQueries++;
+  countEl.textContent = `${groups.size} requests · ${totalQueries} queries`;
+
+  applyVisibility(g);
+}
+
+function addCoverage(entry) {
+  const g = ensureGroup(entry);
+
+  let panel = g.el.querySelector('.coverage');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.className = 'coverage lean';
+    g.el.appendChild(panel);
+  }
+
+  const fields = entry.fields || [];
+  const counts = { missing: 0, partial: 0, filled: 0 };
+  const fieldsHtml = fields.map(f => {
+    counts[f.status] = (counts[f.status] || 0) + 1;
+    const cls = ['cov-field', f.status].join(' ');
+    const rows = f.status === 'partial' ? ` (${f.filledRows}/${entry.rowCount})` : '';
+    return `<span class="${cls}" data-status="${f.status}" title="${escapeHtml(f.type)}: ${f.status}${rows}">`
+      + `${escapeHtml(f.name)}<span class="cov-type"> ${escapeHtml(shortType(f.type))}</span></span>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <h3>DTO coverage · <span class="dto">${escapeHtml(entry.dtoType)}</span>
+      <span class="rows">${entry.rowCount} row${entry.rowCount === 1 ? '' : 's'}</span>
+      <span class="cov-toggle">show filled</span></h3>
+    <div class="cov-grid">${fieldsHtml || '<em style="color:var(--muted)">no fields</em>'}</div>
+    <div class="cov-legend">
+      <span class="l-missing" data-status="missing" title="click to hide these">missing (${counts.missing})</span>
+      <span class="l-partial" data-status="partial" title="click to hide these">partial (${counts.partial})</span>
+      <span class="l-filled" data-status="filled" title="click to hide these">filled (${counts.filled})</span>
+    </div>`;
+
+  panel.querySelector('.cov-toggle').addEventListener('click', e => {
+    const lean = panel.classList.toggle('lean');
+    e.target.textContent = lean ? 'show filled' : 'hide filled';
+  });
+
+  panel.querySelectorAll('.cov-legend span').forEach(item => {
+    item.addEventListener('click', () => {
+      const status = item.dataset.status;
+      const hidden = item.classList.toggle('hiding');
+      if (status === 'filled') panel.classList.remove('lean');
+      panel.querySelectorAll(`.cov-field[data-status="${status}"]`).forEach(chip => {
+        chip.classList.toggle('cov-hidden', hidden);
+      });
+    });
+  });
+
+  const sum = g.el.querySelector('summary');
+  const missStat = sum.querySelector('.cov-missing-stat');
+  if (entry.missingCount > 0) {
+    missStat.style.display = '';
+    missStat.querySelector('.cov-missing-count').textContent = entry.missingCount;
+  } else {
+    missStat.style.display = 'none';
+  }
+}
+
+function shortType(t) {
+  return t.replace(/List<([^>]+)>/, '$1[]').replace(/Dto\b/g, '');
+}
+
+function applyVisibility(g) {
+  const el = g.el;
+  if (dupOnly && !el.classList.contains('has-dups')) { el.style.display = 'none'; return; }
+  if (!filter) { el.style.display = ''; return; }
+  const f = filter.toLowerCase();
+  const path = el.querySelector('.req-path').textContent.toLowerCase();
+  if (path.includes(f)) { el.style.display = ''; return; }
+  const match = Array.from(el.querySelectorAll('.q'))
+    .some(q => q.textContent.toLowerCase().includes(f));
+  el.style.display = match ? '' : 'none';
+}
+
+function connect() {
+  const es = new EventSource(base + '/stream');
+  es.onopen  = () => { statusEl.className = 'status live'; statusEl.textContent = 'connected'; };
+  es.onerror = () => { statusEl.className = 'status dead'; statusEl.textContent = 'reconnecting…'; };
+  es.onmessage = ev => { if (paused) return; addQuery(JSON.parse(ev.data)); };
+
+  const cov = new EventSource(base + '/coverage-stream');
+  cov.onmessage = ev => { if (paused) return; addCoverage(JSON.parse(ev.data)); };
+}
+connect();
+
+filterEl.addEventListener('input', () => {
+  filter = filterEl.value.trim();
+  for (const g of groups.values()) applyVisibility(g);
+});
+dupOnlyBtn.addEventListener('click', () => {
+  dupOnly = !dupOnly;
+  dupOnlyBtn.classList.toggle('toggled', dupOnly);
+  for (const g of groups.values()) applyVisibility(g);
+});
+clearBtn.addEventListener('click', () => {
+  list.innerHTML = '';
+  list.appendChild(empty);
+  groups.clear();
+  totalQueries = 0;
+  currentLatest = null;
+  background = null;
+  countEl.textContent = '0 requests · 0 queries';
+});
+pauseBtn.addEventListener('click', () => {
+  paused = !paused;
+  pauseBtn.textContent = paused ? 'resume' : 'pause';
+});
+</script>
+</body>
+</html>

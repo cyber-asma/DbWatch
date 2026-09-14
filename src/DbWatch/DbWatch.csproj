@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>DbWatch</PackageId>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <Title>DbWatch</Title>
+    <Description>A live page that shows the SQL each HTTP request runs through EF Core in ASP.NET Core, with repeated queries, slow queries and response DTO coverage. Development only.</Description>
+    <PackageTags>efcore;entity-framework-core;aspnetcore;sql;diagnostics;debugging</PackageTags>
+    <PackageProjectUrl>https://github.com/cyber-asma/DbWatch</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="DbWatch.html" LogicalName="DbWatch.DbWatch.html" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <InternalsVisibleTo Include="DbWatch.Tests" />
+  </ItemGroup>
+
+</Project>
