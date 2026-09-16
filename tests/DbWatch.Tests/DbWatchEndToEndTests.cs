@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Hosting;
@@ -65,6 +66,42 @@ public sealed class DbWatchEndToEndTests
         using var client = app.GetTestClient();
 
         using var response = await client.GetAsync(url);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task TheQueryStoreLookupSaysItNeedsSqlServer()
+    {
+        await using var app = await TestApp.StartAsync(Environments.Development);
+        using var client = app.GetTestClient();
+
+        using var response = await client.PostAsJsonAsync("/db-watch/query-store", new { sql = "SELECT 1" });
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"available\":false", body, StringComparison.Ordinal);
+        Assert.Contains("needs SQL Server", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheQueryStoreLookupRejectsAnEmptyStatement()
+    {
+        await using var app = await TestApp.StartAsync(Environments.Development);
+        using var client = app.GetTestClient();
+
+        using var response = await client.PostAsJsonAsync("/db-watch/query-store", new { sql = " " });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task TheQueryStoreLookupIsNotServedOutsideDevelopment()
+    {
+        await using var app = await TestApp.StartAsync(Environments.Production);
+        using var client = app.GetTestClient();
+
+        using var response = await client.PostAsJsonAsync("/db-watch/query-store", new { sql = "SELECT 1" });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

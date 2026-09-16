@@ -2,6 +2,7 @@ using System.Net.ServerSentEvents;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -27,6 +28,7 @@ public static class DbWatchExtensions
         builder.Services.AddHttpContextAccessor();
         builder.Services.TryAddSingleton<DbWatchHub>();
         builder.Services.TryAddSingleton<DbWatchInterceptor>();
+        builder.Services.TryAddSingleton<IDbWatchQueryStore, DbWatchQueryStore<TContext>>();
         builder.Services.AddOptions<DbWatchOptions>().Configure(configure ?? (_ => { }));
 
         builder.Services.ConfigureDbContext<TContext>((services, options) =>
@@ -59,7 +61,22 @@ public static class DbWatchExtensions
         group.MapGet("coverage-stream", (DbWatchHub hub, CancellationToken cancellationToken) =>
             TypedResults.ServerSentEvents(Opened(hub.WatchCoverage(cancellationToken))));
 
+        group.MapPost("query-store", FindInQueryStoreAsync);
+
         return app;
+    }
+
+    private static async Task<Results<Ok<DbWatchQueryStoreResult>, BadRequest>> FindInQueryStoreAsync(
+        DbWatchQueryStoreRequest request,
+        IDbWatchQueryStore queryStore,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Sql))
+        {
+            return TypedResults.BadRequest();
+        }
+
+        return TypedResults.Ok(await queryStore.FindAsync(request.Sql, cancellationToken));
     }
 
     private static async IAsyncEnumerable<SseItem<T?>> Opened<T>(IAsyncEnumerable<T> items)

@@ -9,6 +9,9 @@ For every request you see:
 - the slowest query
 - for `GET /api/...` controller actions: which fields of the response DTO were filled, filled
   in only some rows, or empty in every row
+- on SQL Server, a **find in Query Store** button on each query: its Query Store query id, how
+  many plans it has, how often it ran, its average duration and logical reads, and whether a plan
+  suggests a missing index
 
 Queries that do not belong to a request, such as those from a background service, are grouped
 as `BG`.
@@ -74,11 +77,20 @@ builder.AddDbWatch<ApplicationDbContext>(options =>
   response and counts, per DTO field, how many rows carry a value.
 - The page listens to two server-sent event streams, `/db-watch/stream` and
   `/db-watch/coverage-stream`.
+- **find in Query Store** posts the query text to `/db-watch/query-store`. DbWatch opens its own
+  connection with the app's connection string, switches it to `master` and reads the app
+  database's Query Store views by their full name. That connection does not go through EF Core,
+  so the lookup never shows up on the page, and because it runs in `master` it is not recorded in
+  the app database's Query Store either.
 - Nothing is recorded and no response is copied while no page is open.
 
 ## Requirements
 
 .NET 10 and EF Core 10, with any relational provider.
+
+The Query Store lookup needs SQL Server with Query Store turned on for the app database, and a
+login that can read its views (`VIEW DATABASE STATE`). With any other provider the button says so
+instead of failing.
 
 ## Build and test
 

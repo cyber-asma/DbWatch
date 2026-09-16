@@ -191,6 +191,20 @@
 
   .empty { color: var(--muted); padding: 60px 20px; text-align: center; font-style: italic; }
 
+  .qs { margin-top: 10px; }
+  .qs-find {
+    background: var(--panel); color: var(--accent); border: 1px solid var(--border);
+    border-radius: 3px; padding: 3px 10px; font-size: 11px; cursor: pointer;
+  }
+  .qs-find:hover { background: var(--accent-bg); }
+  .qs-find:disabled { color: var(--muted); cursor: default; background: var(--panel); }
+  .qs-result { margin-top: 6px; }
+  .qs-result table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; background: var(--panel); border: 1px solid var(--border-soft); border-radius: 3px; }
+  .qs-result th { text-align: left; font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 10px; border-bottom: 1px solid var(--border-soft); }
+  .qs-result td { padding: 4px 10px; border-top: 1px solid var(--border-soft); }
+  .qs-note { color: var(--muted); font-size: 12px; }
+  .qs-warn { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; background: var(--danger-bg); color: var(--danger); white-space: nowrap; }
+
   .req-stat.cov-missing { background: var(--danger-bg); color: var(--danger); }
   .req-stat.cov-missing b { color: var(--danger); }
 
@@ -312,6 +326,45 @@ function paramsTable(params) {
   }
   html += '</table></div>';
   return html;
+}
+
+function queryStoreTable(result) {
+  if (!result.available) {
+    return `<em class="qs-note">${escapeHtml(result.reason || 'Query Store is not available.')}</em>`;
+  }
+  if (!result.matches.length) {
+    return '<em class="qs-note">Not in Query Store yet. SQL Server registers new queries a few seconds after they run; try again.</em>';
+  }
+  let html = '<table><tr><th>query id</th><th>plans</th><th>runs</th><th>avg ms</th><th>avg reads</th><th>last run</th><th></th></tr>';
+  for (const m of result.matches) {
+    const lastRun = m.lastRunUtc ? new Date(m.lastRunUtc).toLocaleString('en-GB') : '-';
+    const warn = m.hasMissingIndex
+      ? '<span class="qs-warn" title="a plan of this query carries a missing index suggestion">missing index</span>'
+      : '';
+    html += `<tr><td>${m.queryId}</td><td>${m.plans}</td><td>${m.executions}</td>`
+      + `<td>${m.avgMs.toFixed(1)}</td><td>${Math.round(m.avgLogicalReads)}</td><td>${lastRun}</td><td>${warn}</td></tr>`;
+  }
+  return html + '</table>';
+}
+
+async function findInQueryStore(sql, det) {
+  const button = det.querySelector('.qs-find');
+  const out = det.querySelector('.qs-result');
+  button.disabled = true;
+  out.innerHTML = '<em class="qs-note">looking up…</em>';
+  try {
+    const response = await fetch(base + '/query-store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql }),
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    out.innerHTML = queryStoreTable(await response.json());
+  } catch (error) {
+    out.innerHTML = `<em class="qs-note">Lookup failed: ${escapeHtml(String(error.message || error))}</em>`;
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function parseSql(sql) {
@@ -436,7 +489,12 @@ function addQuery(entry) {
     <div class="q-body">
       <pre class="sql">${highlight(prettyPrint(entry.sql))}</pre>
       ${paramsTable(entry.parameters)}
+      <div class="qs">
+        <button class="qs-find" type="button">find in Query Store</button>
+        <div class="qs-result"></div>
+      </div>
     </div>`;
+  det.querySelector('.qs-find').addEventListener('click', () => findInQueryStore(entry.sql, det));
   queriesEl.appendChild(det);
 
   if (dupInfo.firstEl === null) {
