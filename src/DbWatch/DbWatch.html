@@ -191,7 +191,7 @@
 
   .empty { color: var(--muted); padding: 60px 20px; text-align: center; font-style: italic; }
 
-  .qs { margin-top: 10px; }
+  .qs { margin-bottom: 10px; }
   .qs-find {
     background: var(--panel); color: var(--accent); border: 1px solid var(--border);
     border-radius: 3px; padding: 3px 10px; font-size: 11px; cursor: pointer;
@@ -487,12 +487,12 @@ function addQuery(entry) {
       <span class="q-preview">${escapeHtml(preview)}</span>
     </summary>
     <div class="q-body">
-      <pre class="sql">${highlight(prettyPrint(entry.sql))}</pre>
-      ${paramsTable(entry.parameters)}
       <div class="qs">
         <button class="qs-find" type="button">find in Query Store</button>
         <div class="qs-result"></div>
       </div>
+      <pre class="sql">${highlight(prettyPrint(entry.sql))}</pre>
+      ${paramsTable(entry.parameters)}
     </div>`;
   det.querySelector('.qs-find').addEventListener('click', () => findInQueryStore(entry.sql, det));
   queriesEl.appendChild(det);
